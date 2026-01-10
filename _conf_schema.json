@@ -1,7 +1,75 @@
 {
-  "avatar_text": {
-    "description": "头像右侧显示的文字；留空则使用 Bot 名称",
-    "type": "string",
-    "default": ""
+  "avatar": {
+    "description": "头像",
+    "type": "object",
+    "items": {
+      "avatar_local_path": {
+        "description": "自定义头像本地路径",
+        "type": "string",
+        "default": "",
+        "hint": "填写后将优先读取本地文件作为头像；读取失败则回退到 avatar_url 或 Bot 默认头像。"
+      },
+      "avatar_url": {
+        "description": "自定义头像图片 URL",
+        "type": "string",
+        "default": "",
+        "hint": "留空则不使用自定义 URL，将回退到本地头像或 Bot 默认头像。"
+      },
+      "avatar_text": {
+        "description": "状态图头像右侧显示名称",
+        "type": "string",
+        "default": "AstrBot",
+        "hint": "为空则使用默认“AstrBot”。"
+      }
+    }
+  },
+  "background": {
+    "description": "背景",
+    "type": "object",
+    "items": {
+      "bg_provider": {
+        "description": "背景获取来源（主）",
+        "type": "string",
+        "default": "loli",
+        "options": ["loli", "lolicon", "loli&lolicon", "local", "none"],
+        "hint": "支持：loliapi/lolicon（Pixiv）/loli&lolicon（两者随机）/local（本地路径或目录）/none（内置默认背景）。"
+      },
+      "bg_fallback_chain": {
+        "description": "背景回退链",
+        "type": "string",
+        "default": "loli&lolicon,local",
+        "hint": "逗号分隔的回退顺序（会在 bg_provider 失败后按顺序尝试），为空则仅使用 bg_provider（完全失败会回退到内置默认背景）。"
+      },
+      "bg_local_path": {
+        "description": "本地背景路径（文件或目录）",
+        "type": "string",
+        "default": "",
+        "hint": "可填写绝对或相对路径；目录会随机抽取其中的图片文件。"
+      },
+      "bg_preload_count": {
+        "description": "预加载背景数量",
+        "type": "int",
+        "default": 1,
+        "hint": "后台预取的背景张数，>=1。"
+      },
+      "bg_req_timeout": {
+        "description": "背景请求超时（秒）",
+        "type": "int",
+        "default": 10,
+        "hint": "在线背景请求超时时间。"
+      },
+      "bg_proxy": {
+        "description": "背景请求代理",
+        "type": "string",
+        "default": "",
+        "hint": "获取在线背景时使用的 http/https/socks5 代理地址，留空不使用代理。"
+      },
+      "bg_lolicon_r18_type": {
+        "description": "Lolicon 背景 R18 类型",
+        "type": "int",
+        "default": 0,
+        "hint": "0=正常，1=R18，2=混合；仅在使用 lolicon 提供方时生效。"
+      }
+    }
   }
 }

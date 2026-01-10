@@ -17,15 +17,6 @@
   - Bot 名称（支持配置显示文字）
   - AstrBot 运行时长 / 系统运行时长
 
-## 指令说明
-
-- 指令：`运行状态`
-
-具体触发方式取决于你在 AstrBot 中配置的前缀和唤醒词，例如：
-
-- `#运行状态`
-- `/运行状态`
-
 当指令被触发时，插件会：
 
 1. 收集当前系统状态（CPU / 内存 / 磁盘 / 网络 / 进程等）。
@@ -33,27 +24,7 @@
 3. 通过 AstrBot 的 t2i 服务将 HTML 模板渲染为图片。
 4. 将图片发送回当前会话。
 
-## 安装与依赖
-
-### 1. 放置插件目录
-
-将本目录 `astrbot_plugin_picstatus/` 放入 AstrBot 的插件目录中，例如：
-
-```text
-astrbot_root/
-  └─ data/
-     └─ plugins/
-        └─ astrbot_plugin_picstatus/
-            main.py
-            collectors.py
-            bg_provider.py
-            t2i_renderer.py
-            templates/
-            res/
-            ...
-```
-
-### 3. AstrBot t2i 服务
+### AstrBot t2i 服务
 
 本插件依赖 AstrBot Core 提供的 HTML 文转图（t2i）能力：
 
@@ -119,4 +90,6 @@ astrbot_root/
 
 ## 特别感谢
 
-- [nonebot-plugin-picstatus](https://github.com/lgc-NB2Dev/nonebot-plugin-picstatus) 作者:[LgCookie](https://github.com/lgc2333)
+- [nonebot-plugin-picstatus](https://github.com/lgc-NB2Dev/nonebot-plugin-picstatus) 作者:[LgCookie](https://github.com/lgc2333) 感谢nonebot2插件作者
+
+- [jwxa](https://github.com/jwxa) 感谢新功能想法
