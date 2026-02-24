@@ -72,6 +72,7 @@
 - 运行时间与系统信息：
   - `bot_run_time`：AstrBot 运行时长
   - `system_run_time`：系统启动至今的运行时长
+  - `astrbot_version`：AstrBot 当前版本（如 `v4.17.6`）
   - `time`：当前时间字符串
   - `python_version`：Python 版本
   - `system_name`：系统名称（如 `Linux 6.8.0 (x86_64)`）

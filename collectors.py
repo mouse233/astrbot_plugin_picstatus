@@ -11,6 +11,7 @@ import psutil
 from cpuinfo import get_cpu_info
 
 from .utils import CpuFreq, readable_python_version, system_name
+from .version_resolver import resolve_astrbot_version
 
 
 def _dt_now() -> datetime:
@@ -237,7 +238,7 @@ def process_status(n: int = 5) -> list[ProcStatus]:
     return procs[:n]
 
 
-async def collect_all() -> dict[str, Any]:
+async def collect_all(context: Any = None) -> dict[str, Any]:
     # 采集系统及运行状态信息，供前端模板使用
     return {
         "cpu_percent": cpu_percent(),
@@ -256,6 +257,7 @@ async def collect_all() -> dict[str, Any]:
         "time": _dt_now().strftime("%Y-%m-%d %H:%M:%S"),
         "python_version": readable_python_version(),
         "system_name": system_name(),
+        "astrbot_version": resolve_astrbot_version(context),
         # header：AstrBot / 机器人运行时长
         "bot_run_time": _format_td(_dt_now() - ASTRBOT_START_TIME),
         "system_run_time": _format_td(_dt_now() - BOOT_TIME),

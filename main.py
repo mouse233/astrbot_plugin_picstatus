@@ -110,8 +110,7 @@ class PicStatusPlugin(Star):
         # t2i_error 用於標記 AstrBot t2i 渲染階段的錯誤，使外層錯誤處理可以給出更精準提示。
         t2i_error: Exception | None = None
         try:
-            collected = await collect_all()
-            collected.setdefault("ps_version", "v1.0.0")
+            collected = await collect_all(context=self.context)
             # Provide header bots info for template compatibility
             try:
                 self_id = event.get_self_id()
