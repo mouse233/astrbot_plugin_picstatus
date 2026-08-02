@@ -11,6 +11,7 @@ import httpx
 import psutil
 from cpuinfo import get_cpu_info
 
+from .http_client import get_http_client
 from .utils import CpuFreq, readable_python_version, system_name
 from .version_resolver import resolve_astrbot_version
 
@@ -35,7 +36,13 @@ def _format_td(dt: timedelta) -> str:
     return " ".join(parts)
 
 
+_cpu_brand_cache: str | None = None
+
+
 def get_cpu_brand() -> str:
+    global _cpu_brand_cache
+    if _cpu_brand_cache is not None:
+        return _cpu_brand_cache
     try:
         brand = str(get_cpu_info().get("brand_raw") or "")
     except Exception:
@@ -43,6 +50,7 @@ def get_cpu_brand() -> str:
     brand = brand.strip()
     if brand.lower().endswith(("cpu", "processor")):
         brand = brand.rsplit(" ", 1)[0]
+    _cpu_brand_cache = brand
     return brand
 
 
@@ -94,7 +102,9 @@ class DiskUsage:
     exception: str | None = None
 
 
-def disk_usage(ignore: list[str] | None = None) -> list[DiskUsage]:
+def disk_usage(
+    ignore: list[str] | None = None, max_items: int | None = None
+) -> list[DiskUsage]:
     ignore = ignore or []
     ret: list[DiskUsage] = []
     for part in psutil.disk_partitions(all=False):
@@ -110,6 +120,9 @@ def disk_usage(ignore: list[str] | None = None) -> list[DiskUsage]:
             ret.append(
                 DiskUsage(name=name, used=None, total=None, percent=None, exception=str(e)),
             )
+    ret.sort(key=lambda x: x.percent if x.percent is not None else -1, reverse=True)
+    if max_items is not None:
+        ret = ret[:max_items]
     return ret
 
 
@@ -189,7 +202,12 @@ async def _connection_check(
 ) -> ConnTest:
     start = time.perf_counter()
     try:
-        resp = await cli.get(url)
+        resp = await cli.get(
+            url,
+            timeout=httpx.Timeout(5.0),
+            follow_redirects=False,
+            headers={"User-Agent": "AstrBot-PicStatus/1.0"},
+        )
         dt = (time.perf_counter() - start) * 1000
         return ConnTest(
             name=name,
@@ -214,15 +232,10 @@ async def connection_test() -> list[ConnTest]:
         ("Cloudflare 204", "https://cp.cloudflare.com/generate_204"),
         ("Xiaomi 204", "http://connect.rom.miui.com/generate_204"),
     ]
-    timeout = httpx.Timeout(5.0)
-    async with httpx.AsyncClient(
-        follow_redirects=False,
-        timeout=timeout,
-        headers={"User-Agent": "AstrBot-PicStatus/1.0"},
-    ) as cli:
-        results = await asyncio.gather(
-            *(_connection_check(cli, name, url) for name, url in endpoints)
-        )
+    cli = await get_http_client()
+    results = await asyncio.gather(
+        *(_connection_check(cli, name, url) for name, url in endpoints)
+    )
     return list(results)
 
 
@@ -233,22 +246,30 @@ class ProcStatus:
     mem: int
 
 
-def process_status(n: int = 5) -> list[ProcStatus]:
-    procs = []
-    for p in psutil.process_iter(attrs=["name", "cpu_percent", "memory_info"]):
+def process_status(n: int = 5, memory_scan_limit: int = 20) -> list[ProcStatus]:
+    candidates: list[tuple[float, psutil.Process, str]] = []
+    for p in psutil.process_iter(attrs=["name", "cpu_percent"]):
         try:
             cpu = p.info.get("cpu_percent") or 0.0
-            mem = getattr(p.info.get("memory_info"), "rss", 0) or 0
             name = p.info.get("name") or str(p.pid)
-            procs.append(ProcStatus(name=name, cpu=float(cpu), mem=int(mem)))
+            candidates.append((float(cpu), p, name))
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    procs: list[ProcStatus] = []
+    for cpu, p, name in candidates[: max(memory_scan_limit, n)]:
+        try:
+            mem = getattr(p.memory_info(), "rss", 0) or 0
+            procs.append(ProcStatus(name=name, cpu=cpu, mem=int(mem)))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
     procs.sort(key=lambda x: (x.cpu, x.mem), reverse=True)
     return procs[:n]
 
 
-async def collect_all(context: Any = None) -> dict[str, Any]:
-    # 采集系统及运行状态信息，供前端模板使用
+def _collect_metrics(context: Any = None) -> dict[str, Any]:
     return {
         "cpu_percent": cpu_percent(),
         "cpu_count": cpu_count(),
@@ -257,17 +278,23 @@ async def collect_all(context: Any = None) -> dict[str, Any]:
         "cpu_brand": get_cpu_brand(),
         "memory_stat": memory_stat(),
         "swap_stat": swap_stat(),
-        "disk_usage": disk_usage(),
+        "disk_usage": disk_usage(max_items=8),
         "disk_io": disk_io(),
         "network_io": network_io(),
-        "network_connection": await connection_test(),
         "process_status": process_status(),
-        # footer 信息：时间、Python 版本、系统名称、插件版本等
         "time": _dt_now().strftime("%Y-%m-%d %H:%M:%S"),
         "python_version": readable_python_version(),
         "system_name": system_name(),
         "astrbot_version": resolve_astrbot_version(context),
-        # header：AstrBot / 机器人运行时长
         "bot_run_time": _format_td(_dt_now() - ASTRBOT_START_TIME),
         "system_run_time": _format_td(_dt_now() - BOOT_TIME),
     }
+
+
+async def collect_all(context: Any = None) -> dict[str, Any]:
+    # 同步采集放到线程池，避免 psutil/cpuinfo 阻塞 AstrBot 事件循环。
+    metrics_task = asyncio.create_task(asyncio.to_thread(_collect_metrics, context))
+    network_task = asyncio.create_task(connection_test())
+    metrics, network_connection = await asyncio.gather(metrics_task, network_task)
+    metrics["network_connection"] = network_connection
+    return metrics

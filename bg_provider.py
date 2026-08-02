@@ -7,14 +7,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
-import httpx
-
 try:
     from astrbot.api import logger  # type: ignore
 except Exception:  # pragma: no cover - fallback for local test env
     import logging
 
     logger = logging.getLogger("astrbot_plugin_picstatus")
+
+from .http_client import get_http_client
 
 
 ASSETS_PATH = Path(__file__).parent / "res" / "assets"
@@ -82,22 +82,6 @@ def _is_image_file(path: Path) -> bool:
     return bool(mime and mime.startswith("image/"))
 
 
-def _create_async_client(
-    *, timeout: int, proxy: str | None, headers: dict[str, str] | None = None
-) -> httpx.AsyncClient:
-    base_kwargs = {
-        "follow_redirects": True,
-        "timeout": timeout,
-        "headers": headers,
-    }
-    if proxy:
-        try:
-            return httpx.AsyncClient(proxy=proxy, **base_kwargs)
-        except TypeError:
-            return httpx.AsyncClient(proxies=proxy, **base_kwargs)  # type: ignore[arg-type]
-    return httpx.AsyncClient(**base_kwargs)
-
-
 async def _fetch_loli(req: BackgroundRequest) -> Optional[BgBytesData]:
     """Fetch one background from loliapi.
 
@@ -105,14 +89,14 @@ async def _fetch_loli(req: BackgroundRequest) -> Optional[BgBytesData]:
     """
     url = "https://www.loliapi.com/acg/pe/"
     try:
-        async with _create_async_client(timeout=req.timeout, proxy=req.proxy) as cli:
-            resp = await cli.get(url)
-            resp.raise_for_status()
-            content = resp.content
-            return BgBytesData(
-                data=content,
-                mime=resp.headers.get("Content-Type") or _detect_image_mime(content),
-            )
+        cli = await get_http_client(proxy=req.proxy)
+        resp = await cli.get(url, timeout=req.timeout)
+        resp.raise_for_status()
+        content = resp.content
+        return BgBytesData(
+            data=content,
+            mime=resp.headers.get("Content-Type") or _detect_image_mime(content),
+        )
     except Exception as e:
         logger.warning(f"fetch_loli failed: {e.__class__.__name__}: {e}")
         return None
@@ -126,9 +110,10 @@ async def _fetch_lolicon(req: BackgroundRequest) -> Optional[BgBytesData]:
         r18_type = 0
 
     try:
-        async with _create_async_client(
+        cli = await get_http_client(proxy=req.proxy)
+        resp = await cli.get(
+            "https://api.lolicon.app/setu/v2",
             timeout=req.timeout,
-            proxy=req.proxy,
             headers={
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -136,31 +121,31 @@ async def _fetch_lolicon(req: BackgroundRequest) -> Optional[BgBytesData]:
                     "Chrome/119.0.0.0 Safari/537.36"
                 ),
             },
-        ) as cli:
-            resp = await cli.get(
-                "https://api.lolicon.app/setu/v2",
-                params={
-                    "num": 1,
-                    "r18": r18_type,
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            payload = data.get("data") or []
-            if not payload:
-                return None
-            url = (payload[0].get("urls") or {}).get("original")
-            if not url:
-                return None
+            params={
+                "num": 1,
+                "r18": r18_type,
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        payload = data.get("data") or []
+        if not payload:
+            return None
+        url = (payload[0].get("urls") or {}).get("original")
+        if not url:
+            return None
 
-            img_resp = await cli.get(url, headers={"Referer": "https://www.pixiv.net/"})
-            img_resp.raise_for_status()
-            content = img_resp.content
-            return BgBytesData(
-                data=content,
-                mime=img_resp.headers.get("Content-Type")
-                or _detect_image_mime(content),
-            )
+        img_resp = await cli.get(
+            url,
+            timeout=req.timeout,
+            headers={"Referer": "https://www.pixiv.net/"},
+        )
+        img_resp.raise_for_status()
+        content = img_resp.content
+        return BgBytesData(
+            data=content,
+            mime=img_resp.headers.get("Content-Type") or _detect_image_mime(content),
+        )
     except Exception as e:
         logger.warning(f"fetch_lolicon failed: {e.__class__.__name__}: {e}")
         return None

@@ -1,22 +1,89 @@
 from __future__ import annotations
+
+import asyncio
 import os
 from pathlib import Path
 from typing import Final
 
 import astrbot.api.message_components as Comp
-import httpx
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
 from .bg_provider import BackgroundRequest, resolve_background
 from .collectors import collect_all
+from .http_client import close_http_clients, get_http_client
 from .utils import ensure_dir
 
 
 PLUGIN_NAME: Final[str] = "astrbot_plugin_picstatus"
 ALIASES: Final[set[str]] = {"状态", "zt", "yxzt", "status", "运行状态"}
 CACHE_DIR = Path(__file__).parent / ".cache"
+
+
+async def _fetch_message_image(event: AstrMessageEvent) -> bytes | None:
+    try:
+        for seg in event.get_messages():
+            if not isinstance(seg, Comp.Image):
+                continue
+            f = getattr(seg, "file", None) or ""
+            if not (isinstance(f, str) and f.startswith(("http://", "https://"))):
+                continue
+            try:
+                cli = await get_http_client()
+                resp = await cli.get(f, timeout=5.0)
+                resp.raise_for_status()
+                return resp.content
+            except Exception:
+                return None
+    except Exception:
+        return None
+    return None
+
+
+async def _resolve_avatar(cfg, self_id: str, adapter: str) -> bytes | None:
+    avatar_bytes = None
+    avatar_url = None
+
+    avatar_cfg = cfg.get("avatar") if isinstance(cfg, dict) else None
+    avatar_cfg = avatar_cfg if isinstance(avatar_cfg, dict) else {}
+
+    avatar_local_path = avatar_cfg.get("avatar_local_path") or cfg.get(
+        "avatar_local_path"
+    )
+    if isinstance(avatar_local_path, str) and avatar_local_path.strip():
+        try:
+            avatar_bytes = await asyncio.to_thread(
+                Path(avatar_local_path.strip()).read_bytes
+            )
+        except Exception as e:
+            logger.warning(
+                f"PicStatus: 读取本地头像失败 {avatar_local_path}: {e}"
+            )
+
+    if avatar_bytes is None:
+        cfg_url = avatar_cfg.get("avatar_url") or cfg.get("avatar_url")
+        if isinstance(cfg_url, str) and cfg_url.strip():
+            avatar_url = cfg_url.strip()
+
+    if avatar_bytes is None and avatar_url is None:
+        try:
+            if "qq" in adapter.lower() or "aiocqhttp" in adapter.lower():
+                avatar_url = f"https://q1.qlogo.cn/g?b=qq&nk={self_id}&s=640"
+        except Exception:
+            pass
+
+    if avatar_bytes is None and avatar_url:
+        try:
+            cli = await get_http_client()
+            resp = await cli.get(avatar_url, timeout=5.0)
+            resp.raise_for_status()
+            avatar_bytes = resp.content
+        except Exception as e:
+            logger.warning(f"PicStatus: 获取头像失败 {avatar_url}: {e}")
+            avatar_bytes = None
+
+    return avatar_bytes
 
 
 @register(
@@ -110,54 +177,15 @@ class PicStatusPlugin(Star):
         # t2i_error 用於標記 AstrBot t2i 渲染階段的錯誤，使外層錯誤處理可以給出更精準提示。
         t2i_error: Exception | None = None
         try:
-            collected = await collect_all(context=self.context)
-            # Provide header bots info for template compatibility
             try:
                 self_id = event.get_self_id()
                 adapter = event.get_platform_name() or "AstrBot"
-
-                # 1) 头像右侧文字：留空使用默认 "AstrBot"，填写则使用用户配置
-                cfg = getattr(self, "config", None) or {}
-                avatar_cfg = cfg.get("avatar") if isinstance(cfg, dict) else None
-                avatar_cfg = avatar_cfg if isinstance(avatar_cfg, dict) else {}
-                bot_nick: str = "AstrBot"
-                if hasattr(cfg, "get"):
-                    raw = avatar_cfg.get("avatar_text") or cfg.get("avatar_text")
-                    if isinstance(raw, str):
-                        raw = raw.strip()
-                        if raw:
-                            bot_nick = raw
-
-                bots = [
-                    {
-                        "self_id": self_id,
-                        "nick": bot_nick,
-                        "adapter": adapter,
-                        "bot_connected": collected.get("bot_run_time", ""),
-                        "msg_rec": 0,
-                        "msg_sent": 0,
-                    }
-                ]
             except Exception:
-                bots = []
-            collected.setdefault("bots", bots)
+                self_id = ""
+                adapter = "AstrBot"
 
-            # prefer user image in message chain
-            bg_bytes = None
-            try:
-                for seg in event.get_messages():
-                    if isinstance(seg, Comp.Image):
-                        f = getattr(seg, "file", None) or ""
-                        if isinstance(f, str) and f.startswith(("http://", "https://")):
-                            async with httpx.AsyncClient(
-                                follow_redirects=True, timeout=5
-                            ) as cli:
-                                r = await cli.get(f)
-                                r.raise_for_status()
-                                bg_bytes = r.content
-                                break
-            except Exception:
-                pass
+            collect_task = asyncio.create_task(collect_all(context=self.context))
+            image_task = asyncio.create_task(_fetch_message_image(event))
 
             cfg = getattr(self, "config", None) or {}
             bg_cfg = cfg.get("background") if isinstance(cfg, dict) else None
@@ -205,57 +233,43 @@ class PicStatusPlugin(Star):
                 preload_count=_parse_int("bg_preload_count", 1),
                 lolicon_r18_type=_parse_int("bg_lolicon_r18_type", 0),
             )
-            resolved = await resolve_background(
-                prefer_bytes=bg_bytes,
-                request=request,
+            avatar_task = asyncio.create_task(_resolve_avatar(cfg, self_id, adapter))
+            bg_bytes = await image_task
+            bg_task = asyncio.create_task(
+                resolve_background(prefer_bytes=bg_bytes, request=request)
             )
+            collected, resolved, avatar_bytes = await asyncio.gather(
+                collect_task, bg_task, avatar_task
+            )
+
+            # Provide header bots info for template compatibility
+            try:
+                avatar_cfg = cfg.get("avatar") if isinstance(cfg, dict) else None
+                avatar_cfg = avatar_cfg if isinstance(avatar_cfg, dict) else {}
+                bot_nick: str = "AstrBot"
+                if hasattr(cfg, "get"):
+                    raw = avatar_cfg.get("avatar_text") or cfg.get("avatar_text")
+                    if isinstance(raw, str):
+                        raw = raw.strip()
+                        if raw:
+                            bot_nick = raw
+                bots = [
+                    {
+                        "self_id": self_id,
+                        "nick": bot_nick,
+                        "adapter": adapter,
+                        "bot_connected": collected.get("bot_run_time", ""),
+                        "msg_rec": 0,
+                        "msg_sent": 0,
+                    }
+                ]
+            except Exception:
+                bots = []
+            collected.setdefault("bots", bots)
+
             # Only use AstrBot t2i path
             try:
                 from .t2i_renderer import build_default_html
-
-                # 尝试获取 Bot 头像：优先用配置的本地/URL，其次自动推断 Bot 自己头像
-                avatar_bytes = None
-                avatar_url = None
-
-                avatar_cfg = cfg.get("avatar") if isinstance(cfg, dict) else None
-                avatar_cfg = avatar_cfg if isinstance(avatar_cfg, dict) else {}
-
-                avatar_local_path = avatar_cfg.get("avatar_local_path") or cfg.get(
-                    "avatar_local_path"
-                )
-                if isinstance(avatar_local_path, str) and avatar_local_path.strip():
-                    try:
-                        avatar_bytes = Path(avatar_local_path.strip()).read_bytes()
-                    except Exception as e:
-                        logger.warning(
-                            f"PicStatus: 读取本地头像失败 {avatar_local_path}: {e}"
-                        )
-
-                if avatar_bytes is None:
-                    cfg_url = avatar_cfg.get("avatar_url") or cfg.get("avatar_url")
-                    if isinstance(cfg_url, str) and cfg_url.strip():
-                        avatar_url = cfg_url.strip()
-
-                if avatar_bytes is None and avatar_url is None:
-                    try:
-                        if "qq" in adapter.lower() or "aiocqhttp" in adapter.lower():
-                            avatar_url = (
-                                f"https://q1.qlogo.cn/g?b=qq&nk={self_id}&s=640"
-                            )
-                    except Exception:
-                        pass
-
-                if avatar_bytes is None and avatar_url:
-                    try:
-                        async with httpx.AsyncClient(
-                            follow_redirects=True, timeout=5
-                        ) as cli:
-                            r = await cli.get(avatar_url)
-                            r.raise_for_status()
-                            avatar_bytes = r.content
-                    except Exception as e:
-                        logger.warning(f"PicStatus: 获取头像失败 {avatar_url}: {e}")
-                        avatar_bytes = None
 
                 html = build_default_html(
                     collected, resolved.data, resolved.mime, avatar_bytes=avatar_bytes
@@ -275,6 +289,7 @@ class PicStatusPlugin(Star):
             except Exception as e:
                 t2i_error = e
                 logger.warning(f"PicStatus: AstrBot t2i renderer failed, reason: {e}")
+                raise
         except Exception:
             logger.exception("生成运行状态图片失败")
             msg = "获取运行状态图片失败，请检查后台输出"
@@ -286,4 +301,5 @@ class PicStatusPlugin(Star):
         yield event.image_result(image_to_send)
 
     async def terminate(self):
+        await close_http_clients()
         logger.info("PicStatus plugin terminated")
