@@ -1,5 +1,18 @@
 # PicStatus
 
+> [!IMPORTANT]
+> **Fork 说明**
+>
+> 本仓库是 [exynos967/astrbot_plugin_picstatus](https://github.com/exynos967/astrbot_plugin_picstatus) 的个人 Fork，基于上游代码修改，可能与上游不同步。当前 Fork 相对上游的已落地改动如下：
+>
+> - 网络连通性检测改用 Google / Cloudflare / 小米 204 轻量探测点，并改为并行检测，不再请求百度/Google 首页。
+> - 系统采集、消息图片下载、头像获取和背景解析改为并行执行。
+> - 新增共享 HTTP 客户端，复用连接池；配置代理时按代理地址缓存独立客户端。
+> - 将 `psutil`、`cpuinfo` 等阻塞式采集移入线程池，避免阻塞 AstrBot 事件循环。
+> - 减少采集范围：CPU 品牌缓存、磁盘最多显示 8 个挂载点、进程仅对 TOP 候选读取内存信息。
+> - CPU 占用改为短间隔采样，避免首次读取固定为 0%。
+> - 修复 t2i 渲染失败时可能触发 `UnboundLocalError` 的问题。
+
 以图片形式展示当前设备的运行状态，方便在群聊或私聊中一眼查看 CPU、内存、磁盘、网络等指标。  
 本插件基于 AstrBot 的 HTML 文转图（t2i）能力渲染，无需在插件内额外安装浏览器。
 
