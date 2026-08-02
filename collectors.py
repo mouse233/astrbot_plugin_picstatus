@@ -166,18 +166,10 @@ class NetIO:
     recv_total: int
 
 
-@dataclass
-class NetTotal:
-    sent_total: int
-    recv_total: int
-
-
 _last_net_io = (time.time(), psutil.net_io_counters(pernic=True))
 
 
-def _network_stats(
-    ignore_names: list[str] | None = None,
-) -> tuple[list[NetIO], NetTotal]:
+def network_io(ignore_names: list[str] | None = None) -> list[NetIO]:
     global _last_net_io
     ignore_names = ignore_names or []
     now = time.time()
@@ -205,16 +197,8 @@ def _network_stats(
             )
         )
     _last_net_io = (now, now_c)
-    total = NetTotal(
-        sent_total=sum(it.sent_total for it in ret),
-        recv_total=sum(it.recv_total for it in ret),
-    )
     ret.sort(key=lambda x: (x.sent + x.recv), reverse=True)
-    return ret[:6], total
-
-
-def network_io(ignore_names: list[str] | None = None) -> list[NetIO]:
-    return _network_stats(ignore_names=ignore_names)[0]
+    return ret[:6]
 
 
 @dataclass
@@ -313,7 +297,6 @@ def process_status(
 
 
 def _collect_metrics(context: Any = None) -> dict[str, Any]:
-    network_items, network_total = _network_stats()
     return {
         "cpu_percent": cpu_percent(),
         "cpu_count": cpu_count(),
@@ -324,8 +307,7 @@ def _collect_metrics(context: Any = None) -> dict[str, Any]:
         "swap_stat": swap_stat(),
         "disk_usage": disk_usage(max_items=8),
         "disk_io": disk_io(),
-        "network_io": network_items,
-        "network_total": network_total,
+        "network_io": network_io(),
         "process_status": process_status(),
         "time": _dt_now().strftime("%Y-%m-%d %H:%M:%S"),
         "python_version": readable_python_version(),

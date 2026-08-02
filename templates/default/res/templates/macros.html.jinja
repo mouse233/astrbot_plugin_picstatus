@@ -94,23 +94,20 @@
 
 {% macro network(d) %}
 <div class="card network-info splitter">
-  <div class="list-grid network-io">
+  <div class="network-io">
     {% for it in d.network_io %}
-    <div>{{ it.name }}</div>
-    <div>↑</div>
-    <div class="align-right">{{ it.sent | auto_convert_unit(suffix='/s') }}</div>
-    <div>|</div>
-    <div>↓</div>
-    <div class="align-right">{{ it.recv | auto_convert_unit(suffix='/s') }}</div>
+    <div class="network-device">
+      <div class="device-name">{{ it.name }}</div>
+      <div class="rate-row">
+        <span>↑ {{ it.sent | auto_convert_unit(suffix='/s') }}</span>
+        <span>↓ {{ it.recv | auto_convert_unit(suffix='/s') }}</span>
+      </div>
+      <div class="total-row">
+        <span>↑ {{ it.sent_total | auto_convert_unit }}</span>
+        <span>↓ {{ it.recv_total | auto_convert_unit }}</span>
+      </div>
+    </div>
     {% endfor %}
-  </div>
-  <div class="list-grid network-total">
-    <div>累计流量</div>
-    <div>↑</div>
-    <div class="align-right">{{ d.network_total.sent_total | auto_convert_unit }}</div>
-    <div>|</div>
-    <div>↓</div>
-    <div class="align-right">{{ d.network_total.recv_total | auto_convert_unit }}</div>
   </div>
   <div class="list-grid network-connection-test">
     {% for it in d.network_connection %}

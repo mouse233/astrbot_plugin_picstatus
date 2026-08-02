@@ -344,11 +344,50 @@ span.label {
 }
 
 .list-grid.disk-io,
-.list-grid.network-io,
-.list-grid.network-total,
 .list-grid.network-connection-test,
 .list-grid.process-usage {
   grid-template-columns: minmax(0, 100%) auto auto auto auto auto;
+}
+
+.network-io {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+
+.network-device {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 2px 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.network-device .device-name {
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-size: 15px;
+  font-weight: bold;
+  color: var(--secondary-text-color);
+  word-break: break-all;
+}
+
+.network-device .rate-row,
+.network-device .total-row {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 12px;
+  min-width: 0;
+}
+
+.network-device .rate-row {
+  font-size: 14px;
+}
+
+.network-device .total-row {
+  font-size: 13px;
+  color: var(--secondary-text-color);
 }
 
 .list-grid.network-connection-test {
