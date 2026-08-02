@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -183,38 +184,46 @@ class ConnTest:
     error: str | None = None
 
 
+async def _connection_check(
+    cli: httpx.AsyncClient, name: str, url: str
+) -> ConnTest:
+    start = time.perf_counter()
+    try:
+        resp = await cli.get(url)
+        dt = (time.perf_counter() - start) * 1000
+        return ConnTest(
+            name=name,
+            status=str(resp.status_code),
+            reason="OK" if resp.status_code == 204 else (resp.reason_phrase or "HTTP"),
+            delay=dt,
+        )
+    except Exception as e:
+        dt = (time.perf_counter() - start) * 1000
+        return ConnTest(
+            name=name,
+            status="ERR",
+            reason="",
+            delay=dt,
+            error=f"{e.__class__.__name__}: {e}",
+        )
+
+
 async def connection_test() -> list[ConnTest]:
-    sites = [
-        ("百度", "https://www.baidu.com/"),
-        ("Google", "https://www.google.com/"),
+    endpoints = [
+        ("Google 204", "https://connectivitycheck.gstatic.com/generate_204"),
+        ("Cloudflare 204", "https://cp.cloudflare.com/generate_204"),
+        ("Xiaomi 204", "http://connect.rom.miui.com/generate_204"),
     ]
-    out: list[ConnTest] = []
-    async with httpx.AsyncClient(follow_redirects=True, timeout=5) as cli:
-        for (name, url) in sites:
-            start = time.perf_counter()
-            try:
-                resp = await cli.get(url)
-                dt = (time.perf_counter() - start) * 1000
-                out.append(
-                    ConnTest(
-                        name=name,
-                        status=str(resp.status_code),
-                        reason=resp.reason_phrase or "OK",
-                        delay=dt,
-                    ),
-                )
-            except Exception as e:
-                dt = (time.perf_counter() - start) * 1000
-                out.append(
-                    ConnTest(
-                        name=name,
-                        status="ERR",
-                        reason="",
-                        delay=dt,
-                        error=f"{e.__class__.__name__}: {e}",
-                    ),
-                )
-    return out
+    timeout = httpx.Timeout(5.0)
+    async with httpx.AsyncClient(
+        follow_redirects=False,
+        timeout=timeout,
+        headers={"User-Agent": "AstrBot-PicStatus/1.0"},
+    ) as cli:
+        results = await asyncio.gather(
+            *(_connection_check(cli, name, url) for name, url in endpoints)
+        )
+    return list(results)
 
 
 @dataclass
