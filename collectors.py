@@ -22,6 +22,7 @@ def _dt_now() -> datetime:
 
 BOOT_TIME = datetime.fromtimestamp(psutil.boot_time(), tz=timezone.utc).astimezone()
 ASTRBOT_START_TIME = _dt_now()
+CPU_SAMPLE_INTERVAL = 0.1
 
 
 def _format_td(dt: timedelta) -> str:
@@ -62,9 +63,9 @@ def cpu_count_logical() -> int | None:
     return psutil.cpu_count()
 
 
-def cpu_percent() -> float:
-    # psutil averages across interval=0 (non-blocking) by last call; acceptable for on-demand snapshot
-    return psutil.cpu_percent(interval=None)
+def cpu_percent(interval: float = CPU_SAMPLE_INTERVAL) -> float:
+    # 采集已放入线程池，短间隔采样能避免首次调用固定返回 0.0。
+    return psutil.cpu_percent(interval=interval)
 
 
 def cpu_freq() -> CpuFreq:
@@ -246,13 +247,27 @@ class ProcStatus:
     mem: int
 
 
-def process_status(n: int = 5, memory_scan_limit: int = 20) -> list[ProcStatus]:
-    candidates: list[tuple[float, psutil.Process, str]] = []
-    for p in psutil.process_iter(attrs=["name", "cpu_percent"]):
+def process_status(
+    n: int = 5,
+    memory_scan_limit: int = 20,
+    sample_interval: float = CPU_SAMPLE_INTERVAL,
+) -> list[ProcStatus]:
+    processes: list[tuple[psutil.Process, str]] = []
+    for p in psutil.process_iter(attrs=["name"]):
         try:
-            cpu = p.info.get("cpu_percent") or 0.0
+            p.cpu_percent(None)
             name = p.info.get("name") or str(p.pid)
-            candidates.append((float(cpu), p, name))
+            processes.append((p, name))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    time.sleep(sample_interval)
+
+    candidates: list[tuple[float, psutil.Process, str]] = []
+    for p, name in processes:
+        try:
+            cpu = float(p.cpu_percent(None) or 0.0)
+            candidates.append((cpu, p, name))
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
 
