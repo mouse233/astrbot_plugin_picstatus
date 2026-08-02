@@ -104,6 +104,14 @@
     <div class="align-right">{{ it.recv | auto_convert_unit(suffix='/s') }}</div>
     {% endfor %}
   </div>
+  <div class="list-grid network-total">
+    <div>累计流量</div>
+    <div>↑</div>
+    <div class="align-right">{{ d.network_total.sent_total | auto_convert_unit }}</div>
+    <div>|</div>
+    <div>↓</div>
+    <div class="align-right">{{ d.network_total.recv_total | auto_convert_unit }}</div>
+  </div>
   <div class="list-grid network-connection-test">
     {% for it in d.network_connection %}
     <div>{{ it.name }}</div>

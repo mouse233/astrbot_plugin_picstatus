@@ -345,6 +345,7 @@ span.label {
 
 .list-grid.disk-io,
 .list-grid.network-io,
+.list-grid.network-total,
 .list-grid.network-connection-test,
 .list-grid.process-usage {
   grid-template-columns: minmax(0, 100%) auto auto auto auto auto;
