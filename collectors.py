@@ -229,9 +229,9 @@ async def _connection_check(
 
 async def connection_test() -> list[ConnTest]:
     endpoints = [
-        ("Google 204", "https://connectivitycheck.gstatic.com/generate_204"),
-        ("Cloudflare 204", "https://cp.cloudflare.com/generate_204"),
-        ("Xiaomi 204", "http://connect.rom.miui.com/generate_204"),
+        ("Google", "https://www.gstatic.com/generate_204"),
+        ("Cloudflare", "https://cp.cloudflare.com/generate_204"),
+        ("Xiaomi", "http://connect.rom.miui.com/generate_204"),
     ]
     cli = await get_http_client()
     results = await asyncio.gather(
