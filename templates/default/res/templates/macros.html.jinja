@@ -98,13 +98,17 @@
     {% for it in d.network_io %}
     <div class="network-device">
       <div class="device-name">{{ it.name }}</div>
-      <div class="rate-row">
-        <span>↑ {{ it.sent | auto_convert_unit(suffix='/s') }}</span>
-        <span>↓ {{ it.recv | auto_convert_unit(suffix='/s') }}</span>
-      </div>
-      <div class="total-row">
-        <span>↑ {{ it.sent_total | auto_convert_unit }}</span>
-        <span>↓ {{ it.recv_total | auto_convert_unit }}</span>
+      <div class="device-stats">
+        <div class="rate-row">
+          <span>↑ {{ it.sent | auto_convert_unit(suffix='/s') }}</span>
+          <span>|</span>
+          <span>↓ {{ it.recv | auto_convert_unit(suffix='/s') }}</span>
+        </div>
+        <div class="total-row">
+          <span>↑ {{ it.sent_total | auto_convert_unit }}</span>
+          <span>|</span>
+          <span>↓ {{ it.recv_total | auto_convert_unit }}</span>
+        </div>
       </div>
     </div>
     {% endfor %}
