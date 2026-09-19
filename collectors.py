@@ -112,6 +112,12 @@ def disk_usage(
         name = part.mountpoint
         if any(x in name for x in ignore):
             continue
+        # Docker commonly bind-mounts these individual files into containers:
+        # /etc/hosts, /etc/hostname and /etc/resolv.conf.  They report the
+        # capacity of the backing filesystem, not a meaningful standalone
+        # disk, so only retain directory mount points in the usage display.
+        if Path(name).is_file():
+            continue
         try:
             u = psutil.disk_usage(name)
             ret.append(
@@ -137,6 +143,14 @@ class DiskIO:
 _last_disk_io = (time.time(), psutil.disk_io_counters(perdisk=True))
 
 
+def _block_device_parent(name: str) -> str | None:
+    """Return a Linux block partition's parent device, when available."""
+    device = Path("/sys/class/block") / name
+    if not (device / "partition").is_file():
+        return None
+    return device.resolve().parent.name
+
+
 def disk_io() -> list[DiskIO]:
     global _last_disk_io
     now = time.time()
@@ -146,6 +160,11 @@ def disk_io() -> list[DiskIO]:
     ret: list[DiskIO] = []
     for name, now_one in now_c.items():
         if name not in past:
+            continue
+        # Loop devices back image files or container/snap mounts rather than
+        # normal disks. A whole-disk counter already includes its partitions,
+        # so do not list both when Linux exposes the parent device.
+        if name.startswith("loop") or _block_device_parent(name) in now_c:
             continue
         past_one = past[name]
         read = max(0.0, (now_one.read_bytes - past_one.read_bytes) / dt)
