@@ -5,7 +5,7 @@
 >
 > 本仓库是 [exynos967/astrbot_plugin_picstatus](https://github.com/exynos967/astrbot_plugin_picstatus) 的个人 Fork，基于上游代码修改，可能与上游不同步。当前 Fork 相对上游的已落地改动如下：
 >
-> - 网络连通性检测改用 Google / Cloudflare / 小米 204 轻量探测点，并改为并行检测，不再请求百度/Google 首页。
+> - 网络连通性检测使用 Google / Cloudflare 204 轻量探测点及百度 HTTPS 首页，并改为并行检测。
 > - 系统采集、消息图片下载、头像获取和背景解析改为并行执行。
 > - 新增共享 HTTP 客户端，复用连接池；配置代理时按代理地址缓存独立客户端。
 > - 将 `psutil`、`cpuinfo` 等阻塞式采集移入线程池，避免阻塞 AstrBot 事件循环。
@@ -24,7 +24,7 @@
   - 内存 / 交换分区 使用情况
   - 各挂载盘空间占用 / TOP I/O 情况
   - 每张网卡的实时速率与累计上行下行流量
-  - Google / Cloudflare / 小米 204 探测点的网络连通性与延迟
+  - Google / Cloudflare 204 探测点与百度 HTTPS 首页的网络连通性及延迟
   - TOP 进程 CPU / 内存占用
 - 头部展示：
   - Bot 头像（自动获取 QQ 头像或默认头像）
@@ -80,7 +80,7 @@
   - `disk_io`：按读写总量排序的 TOP 几个磁盘 I/O
 - 网络：
   - `network_io`：各网卡的实时上行/下行速率，以及该网卡累计上行/下行流量
-  - `network_connection`：Google / Cloudflare / 小米 204 探测点的 HTTP 状态与延迟
+  - `network_connection`：Google / Cloudflare 204 探测点与百度 HTTPS 首页的 HTTP 状态及延迟
 - 进程：
   - `process_status`：按 CPU 使用率排序的 TOP 进程（CPU%、RSS 内存）
 - 运行时间与系统信息：
@@ -96,7 +96,7 @@
 ## 注意事项
 
 - **性能与资源**
-  - 插件在每次调用时都会采集系统状态，并并行发起 3 个轻量 HTTP 204 请求（Google / Cloudflare / 小米），请在网络环境较差的机器上适当调整调用频率。
+  - 插件在每次调用时都会采集系统状态，并行发起 Google / Cloudflare 204 请求及百度 HTTPS GET 请求；请在网络环境较差的机器上适当调整调用频率。
   - 获取背景图与头像图也会触发网络请求，超时时间默认为 5～10 秒。
 - **平台兼容**
   - 头像获取逻辑目前主要针对 QQ（`aiocqhttp`）平台使用 qlogo 接口，其他平台会回退到内置默认头像。

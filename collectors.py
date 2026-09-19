@@ -230,14 +230,14 @@ class ConnTest:
 
 
 async def _connection_check(
-    cli: httpx.AsyncClient, name: str, url: str
+    cli: httpx.AsyncClient, name: str, url: str, follow_redirects: bool = False
 ) -> ConnTest:
     start = time.perf_counter()
     try:
         resp = await cli.get(
             url,
             timeout=httpx.Timeout(5.0),
-            follow_redirects=False,
+            follow_redirects=follow_redirects,
             headers={"User-Agent": "AstrBot-PicStatus/1.0"},
         )
         dt = (time.perf_counter() - start) * 1000
@@ -260,13 +260,16 @@ async def _connection_check(
 
 async def connection_test() -> list[ConnTest]:
     endpoints = [
-        ("Google", "http://www.gstatic.com/generate_204"),
-        ("Cloudflare", "http://cp.cloudflare.com/generate_204"),
-        ("Xiaomi", "http://connect.rom.miui.com/generate_204"),
+        ("Google", "http://www.gstatic.com/generate_204", False),
+        ("Cloudflare", "http://cp.cloudflare.com/generate_204", False),
+        ("百度", "https://www.baidu.com/", True),
     ]
     cli = await get_http_client()
     results = await asyncio.gather(
-        *(_connection_check(cli, name, url) for name, url in endpoints)
+        *(
+            _connection_check(cli, name, url, follow_redirects)
+            for name, url, follow_redirects in endpoints
+        )
     )
     return list(results)
 
